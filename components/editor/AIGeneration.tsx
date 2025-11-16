@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePressReleaseStore } from '@/store/usePressReleaseStore'
-import { AIAnalysisInput, AIGeneratedProposal } from '@/types'
+import { AIAnalysisInput, AIGeneratedProposal, AIType } from '@/types'
 import Input from '@/components/Input'
 import Textarea from '@/components/Textarea'
 import Button from '@/components/Button'
@@ -18,6 +18,7 @@ export default function AIGeneration() {
     features: [],
     priceRange: '',
     releaseDate: new Date(),
+    selectedAI: 'auto',
   })
   const [featureInput, setFeatureInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -55,26 +56,42 @@ export default function AIGeneration() {
         body: JSON.stringify({ input }),
       })
 
-      if (!response.ok) {
-        throw new Error('プレスリリース案の生成に失敗しました')
-      }
-
       const data = await response.json()
-      if (data.success && data.proposals) {
-        setAIGeneration({
-          isGenerating: false,
-          proposals: data.proposals,
-          selectedProposal: null,
-        })
+      console.log('API Response:', data)
+
+      if (!response.ok) {
+        const errorMessage = data.error || `HTTP ${response.status}: ${response.statusText}`
+        throw new Error(`プレスリリース案の生成に失敗しました: ${errorMessage}`)
+      }
+      
+      if (data.success) {
+        if (data.proposals && data.proposals.length > 0) {
+          setAIGeneration({
+            isGenerating: false,
+            proposals: data.proposals,
+            selectedProposal: null,
+          })
+        } else {
+          // 提案が生成されなかった場合
+          const message = data.compatibleCount === 0 && data.totalGenerated > 0
+            ? `提案は${data.totalGenerated}件生成されましたが、適合性チェックで全て除外されました。商品情報やトレンドを調整して再度お試しください。`
+            : 'プレスリリース案が生成されませんでした。商品情報を確認して再度お試しください。'
+          alert(message)
+          setAIGeneration({
+            isGenerating: false,
+            proposals: [],
+            selectedProposal: null,
+          })
+        }
       } else {
         throw new Error(data.error || 'プレスリリース案の生成に失敗しました')
       }
     } catch (error) {
       console.error('Generation error:', error)
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー'
+      console.error('Full error details:', error)
       alert(
-        `プレスリリース案の生成に失敗しました: ${
-          error instanceof Error ? error.message : '不明なエラー'
-        }`
+        `プレスリリース案の生成に失敗しました: ${errorMessage}\n\nブラウザのコンソールを確認してください。`
       )
     } finally {
       setIsGenerating(false)
@@ -202,6 +219,59 @@ export default function AIGeneration() {
                 }
                 onChange={(e) => handleInputChange('releaseDate', new Date(e.target.value))}
               />
+              
+              {/* AI選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  AIを選択
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleInputChange('selectedAI', 'auto')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      input.selectedAI === 'auto'
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    自動選択
+                  </button>
+                  <button
+                    onClick={() => handleInputChange('selectedAI', 'openai')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      input.selectedAI === 'openai'
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    OpenAI GPT-4
+                  </button>
+                  <button
+                    onClick={() => handleInputChange('selectedAI', 'claude')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      input.selectedAI === 'claude'
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Claude (Anthropic)
+                  </button>
+                  <button
+                    onClick={() => handleInputChange('selectedAI', 'gemini')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      input.selectedAI === 'gemini'
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Gemini (Google)
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  SCALE PR Competency Modelの5つの力を憑依させた提案を行います
+                </p>
+              </div>
+
               <Button
                 onClick={handleGenerate}
                 disabled={isGenerating || !input.productServiceName || !input.description}
@@ -215,45 +285,65 @@ export default function AIGeneration() {
           {/* 生成された案の一覧 */}
           {aiGeneration.proposals.length > 0 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-gray-900">
-                生成されたプレスリリース案 ({aiGeneration.proposals.length}件)
-              </h2>
-              {aiGeneration.proposals.map((proposal) => (
-                <div
-                  key={proposal.id}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="inline-block px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm font-medium mb-2">
-                        {angleLabels[proposal.angle]}
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  生成されたプレスリリース案 ({aiGeneration.proposals.length}件)
+                </h2>
+                <p className="text-sm text-gray-500">
+                  気に入った案を選択して編集画面に適用できます
+                </p>
+              </div>
+              <div className="grid md:grid-cols-2 gap-6">
+                {aiGeneration.proposals.map((proposal) => (
+                  <div
+                    key={proposal.id}
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="inline-block px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm font-medium mb-2">
+                          {angleLabels[proposal.angle]}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">{proposal.title}</h3>
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900">{proposal.title}</h3>
                     </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">推奨理由</h4>
-                    <p className="text-sm text-gray-600">{proposal.recommendation}</p>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">想定されるメディア反応</h4>
-                    <p className="text-sm text-gray-600">{proposal.expectedMediaReaction}</p>
-                  </div>
-
-                  <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">プレビュー</h4>
-                    <div className="text-sm text-gray-600 space-y-2">
-                      <p className="font-medium">{proposal.introduction.substring(0, 200)}...</p>
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                        <span className="mr-2">💡</span>推奨理由
+                      </h4>
+                      <p className="text-sm text-gray-600 leading-relaxed">{proposal.recommendation}</p>
                     </div>
-                  </div>
 
-                  <Button onClick={() => handleSelectProposal(proposal)} className="w-full">
-                    この案を選択して編集
-                  </Button>
-                </div>
-              ))}
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                        <span className="mr-2">📰</span>想定されるメディア反応
+                      </h4>
+                      <p className="text-sm text-gray-600 leading-relaxed">{proposal.expectedMediaReaction}</p>
+                    </div>
+
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">プレビュー</h4>
+                      <div className="text-sm text-gray-600 space-y-2">
+                        <p className="font-medium line-clamp-3">{proposal.introduction}</p>
+                        {proposal.background && (
+                          <p className="text-xs text-gray-500 line-clamp-2">
+                            {proposal.background}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button 
+                      onClick={() => handleSelectProposal(proposal)} 
+                      className="w-full"
+                      variant="primary"
+                    >
+                      この案を選択して編集
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

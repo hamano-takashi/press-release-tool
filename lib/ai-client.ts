@@ -1,6 +1,6 @@
 /**
  * AI API連携クライアント
- * OpenAI GPT-4 または Anthropic Claude APIを使用してプレスリリースを生成
+ * OpenAI GPT-4、Anthropic Claude、Google Gemini APIを使用してプレスリリースを生成
  */
 
 interface AIPrompt {
@@ -113,11 +113,112 @@ async function generateWithClaude(prompt: AIPrompt): Promise<AIResponse> {
 }
 
 /**
- * 利用可能なAI APIを使用してテキストを生成
- * OpenAI > Claude の順で試行
+ * Google Gemini APIを使用してテキストを生成
  */
-export async function generateWithAI(prompt: AIPrompt): Promise<AIResponse> {
-  // OpenAI APIを優先的に試行
+async function generateWithGemini(prompt: AIPrompt): Promise<AIResponse> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEYが設定されていません')
+  }
+
+  try {
+    // Gemini APIのエンドポイント（最新のAPIバージョンを使用）
+    // gemini-1.5-pro または gemini-pro を使用可能
+    const model = 'gemini-1.5-pro'
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+    // Gemini APIはsystemメッセージを直接サポートしていないため、
+    // userメッセージにsystemプロンプトを含める
+    const fullPrompt = `${prompt.system}\n\n${prompt.user}`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: fullPrompt,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2000,
+          topP: 0.95,
+          topK: 40,
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        `Gemini API error: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`
+      )
+    }
+
+    const data = await response.json()
+    
+    // エラーチェック
+    if (data.error) {
+      throw new Error(`Gemini API error: ${JSON.stringify(data.error)}`)
+    }
+
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+
+    if (!content) {
+      // セーフティフィルターでブロックされた場合など
+      const finishReason = data.candidates?.[0]?.finishReason
+      if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`Gemini API: コンテンツが生成されませんでした。理由: ${finishReason}`)
+      }
+      throw new Error('Gemini APIからコンテンツが返されませんでした')
+    }
+
+    return { content }
+  } catch (error) {
+    console.error('Gemini API error:', error)
+    throw error
+  }
+}
+
+/**
+ * 利用可能なAI APIを使用してテキストを生成
+ * @param prompt プロンプト
+ * @param aiType 選択されたAIタイプ（'openai' | 'claude' | 'gemini' | 'auto'）
+ */
+export async function generateWithAI(
+  prompt: AIPrompt,
+  aiType: 'openai' | 'claude' | 'gemini' | 'auto' = 'auto'
+): Promise<AIResponse> {
+  // 指定されたAIタイプに基づいて生成
+  if (aiType === 'openai') {
+    if (process.env.OPENAI_API_KEY) {
+      return await generateWithOpenAI(prompt)
+    }
+    throw new Error('OPENAI_API_KEYが設定されていません')
+  }
+
+  if (aiType === 'claude') {
+    if (process.env.ANTHROPIC_API_KEY) {
+      return await generateWithClaude(prompt)
+    }
+    throw new Error('ANTHROPIC_API_KEYが設定されていません')
+  }
+
+  if (aiType === 'gemini') {
+    if (process.env.GEMINI_API_KEY) {
+      return await generateWithGemini(prompt)
+    }
+    throw new Error('GEMINI_API_KEYが設定されていません')
+  }
+
+  // auto の場合は OpenAI > Claude > Gemini の順で試行
   if (process.env.OPENAI_API_KEY) {
     try {
       return await generateWithOpenAI(prompt)
@@ -125,19 +226,46 @@ export async function generateWithAI(prompt: AIPrompt): Promise<AIResponse> {
       console.warn('OpenAI API failed, trying Claude:', error)
       // OpenAIが失敗した場合、Claudeを試行
       if (process.env.ANTHROPIC_API_KEY) {
-        return await generateWithClaude(prompt)
+        try {
+          return await generateWithClaude(prompt)
+        } catch (claudeError) {
+          console.warn('Claude API failed, trying Gemini:', claudeError)
+          // Claudeが失敗した場合、Geminiを試行
+          if (process.env.GEMINI_API_KEY) {
+            return await generateWithGemini(prompt)
+          }
+          throw claudeError
+        }
+      }
+      // Claudeが利用できない場合、Geminiを試行
+      if (process.env.GEMINI_API_KEY) {
+        return await generateWithGemini(prompt)
       }
       throw error
     }
   }
 
-  // Claude APIを試行
+  // OpenAIが利用できない場合、Claudeを試行
   if (process.env.ANTHROPIC_API_KEY) {
-    return await generateWithClaude(prompt)
+    try {
+      return await generateWithClaude(prompt)
+    } catch (error) {
+      console.warn('Claude API failed, trying Gemini:', error)
+      // Claudeが失敗した場合、Geminiを試行
+      if (process.env.GEMINI_API_KEY) {
+        return await generateWithGemini(prompt)
+      }
+      throw error
+    }
+  }
+
+  // Claudeも利用できない場合、Geminiを試行
+  if (process.env.GEMINI_API_KEY) {
+    return await generateWithGemini(prompt)
   }
 
   // どちらのAPIキーも設定されていない場合
-  throw new Error('AI APIキーが設定されていません。OPENAI_API_KEYまたはANTHROPIC_API_KEYを設定してください。')
+  throw new Error('AI APIキーが設定されていません。OPENAI_API_KEY、ANTHROPIC_API_KEY、またはGEMINI_API_KEYを設定してください。')
 }
 
 /**
@@ -185,6 +313,7 @@ ${JSON.stringify(answers, null, 2)}
 /**
  * プロポーザル生成用のプロンプトを作成
  * 特定のアングルでプレスリリース案を生成する
+ * SCALE PR Competency Modelの力を憑依させる
  */
 export function createProposalPrompt(
   input: {
@@ -195,13 +324,16 @@ export function createProposalPrompt(
     features: string[]
     priceRange: string
     releaseDate: Date | string
+    selectedAI?: 'openai' | 'claude' | 'gemini' | 'auto'
   },
   angle: 'social-issue' | 'trend-aligned' | 'seasonal' | 'unique-story' | 'industry-innovative',
   analysis: {
     trends: string[]
     newsTopics: string[]
     marketConditions: string
-  }
+  },
+  scalePowers?: string[],
+  compatibilityInfo?: { score: number; reasons: string[] }
 ): AIPrompt {
   const angleDescriptions: Record<typeof angle, string> = {
     'social-issue': '社会課題解決型：社会課題の解決に貢献する角度で、社会的意義を強調します',
@@ -211,7 +343,19 @@ export function createProposalPrompt(
     'industry-innovative': '業界革新型：業界に革新をもたらす角度で、業界への影響を強調します',
   }
 
-  const systemPrompt = `あなたはプロのプレスリリースライターです。
+  // SCALE PR Competency Modelの力を憑依させる
+  const scalePowerContext = scalePowers && scalePowers.length > 0
+    ? `\n\n【SCALE PR Competency Modelの力を憑依】\n以下のPRパーソンに必要な力を活用してください：\n${scalePowers.map(p => `- ${p}`).join('\n')}\nこれらの力を活用して、商品・サービスとトレンドを違和感なく組み合わせ、メディアに取り上げられやすい提案を行ってください。合わないものは提案しないでください。`
+    : ''
+
+  // 適合性情報を追加
+  const compatibilityContext = compatibilityInfo && compatibilityInfo.score >= 50
+    ? `\n\n【適合性情報】\n商品とトレンドの適合性スコア: ${compatibilityInfo.score}/100\n適合理由: ${compatibilityInfo.reasons.join('、')}\nこの適合性を考慮して、自然で違和感のない提案を行ってください。`
+    : compatibilityInfo && compatibilityInfo.score < 50
+    ? `\n\n【注意】商品とトレンドの適合性スコアが低い（${compatibilityInfo.score}/100）ため、無理に組み合わせず、自然な提案を行ってください。適合性が低すぎる場合は、提案を控えてください。`
+    : ''
+
+  const systemPrompt = `あなたはSCALE PR Competency Modelの5つの力を備えたプロのプレスリリースライターです。
 商品・サービスの情報と最新のトレンド分析を基に、メディアに取り上げられやすい高品質なプレスリリース案を作成してください。
 
 以下の要件を守ってください：
@@ -220,7 +364,9 @@ export function createProposalPrompt(
 - メディアの関心を引く構成にする
 - 事実に基づいた内容にする
 - 簡潔で分かりやすい表現を使用
-- トレンド分析の結果を適切に反映する`
+- トレンド分析の結果を適切に反映する
+- 商品とトレンドを違和感なく組み合わせる
+- 合わないものは提案しない${scalePowerContext}${compatibilityContext}`
 
   const userPrompt = `以下の情報を基に、${angleDescriptions[angle]}のアングルでプレスリリース案を作成してください：
 

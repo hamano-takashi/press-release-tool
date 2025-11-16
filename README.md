@@ -38,8 +38,10 @@ npm run dev
 
 ```env
 # AI API（オプション - フェーズ3で使用）
+# 少なくとも1つのAI APIキーを設定してください
 OPENAI_API_KEY=your_openai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
+GEMINI_API_KEY=your_gemini_api_key
 
 # 外部API（オプション - フェーズ3で使用）
 NEWS_API_KEY=your_news_api_key

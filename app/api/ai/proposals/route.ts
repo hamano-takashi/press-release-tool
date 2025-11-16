@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AIAnalysisInput, AIGeneratedProposal, ProposalAngle, PressRelease } from '@/types'
+import { AIAnalysisInput, AIGeneratedProposal, ProposalAngle, PressRelease, AIType, SCALEPower } from '@/types'
 import { generateId } from '@/lib/utils'
 import { toAppError, getUserFriendlyMessage, logError } from '@/lib/error-handler'
 import { generateWithAI, createProposalPrompt } from '@/lib/ai-client'
+import { fetchIndustryNews, extractTrendsFromNews } from '@/lib/news-api'
+import { ANGLE_TO_SCALE_POWERS, checkCompatibility, SCALE_POWERS } from '@/lib/scale-pr-model'
 
 /**
  * AI自動プレスリリース案生成API
@@ -27,13 +29,42 @@ export async function POST(request: NextRequest) {
     // トレンド分析（実際の実装では外部APIを呼び出す）
     const analysis = await analyzeTrends(input)
 
+    // 選択されたAIタイプを取得（デフォルトは'auto'）
+    const selectedAI: AIType = input.selectedAI || 'auto'
+
     // 複数のアングルでプレスリリース案を生成
-    const proposals = await generateProposals(input, analysis)
+    const proposals = await generateProposals(input, analysis, selectedAI)
+
+    console.log(`Generated ${proposals.length} proposals`)
+
+    // 適合性が低い提案も含めて全て返す（フィルタリングしない）
+    // 適合性スコアは提案に含まれているので、ユーザーが判断できる
+    // ただし、スコアが非常に低い（10未満）ものは除外する
+    const filteredProposals = proposals.filter(p => {
+      if (p.compatibilityScore === undefined) return true // スコアがない場合は含める
+      return p.compatibilityScore >= 10 // スコア10以上は含める
+    })
+
+    console.log(`Filtered proposals: ${filteredProposals.length} out of ${proposals.length}`)
+
+    // 提案が1つもない場合は、最低限の提案を生成する
+    if (filteredProposals.length === 0 && proposals.length > 0) {
+      // スコアが最も高い提案を1つ返す
+      const bestProposal = proposals.reduce((best, current) => {
+        const bestScore = best.compatibilityScore || 0
+        const currentScore = current.compatibilityScore || 0
+        return currentScore > bestScore ? current : best
+      })
+      filteredProposals.push(bestProposal)
+      console.log(`Using best proposal with score: ${bestProposal.compatibilityScore}`)
+    }
 
     return NextResponse.json({
       success: true,
-      proposals,
+      proposals: filteredProposals,
       analysis,
+      totalGenerated: proposals.length,
+      compatibleCount: filteredProposals.length,
     })
   } catch (error) {
     console.error('Proposal generation error:', error)
@@ -51,12 +82,48 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * トレンド分析（モック実装）
- * 実際の実装では、NewsAPIやGoogle News APIなどを使用
+ * トレンド分析
+ * NewsAPIを使用して実際のニュースとトレンドを取得
  */
 async function analyzeTrends(input: AIAnalysisInput) {
-  // TODO: 実際のAPI連携を実装
-  // 現在はモックデータを返す
+  const apiKey = process.env.NEWS_API_KEY
+
+  // NewsAPIキーがある場合は実際のAPIを使用
+  if (apiKey) {
+    try {
+      // 業界に関連するニュースを取得
+      const industryNews = await fetchIndustryNews(input.industry || input.productServiceName)
+
+      // ニュースからトレンドキーワードを抽出
+      const trends = extractTrendsFromNews(industryNews)
+
+      // ニューストピックを抽出
+      const newsTopics = industryNews.slice(0, 5).map((article) => article.title)
+
+      // 市場状況を分析（ニュースの内容から推測）
+      const marketConditions = analyzeMarketConditions(industryNews, input)
+
+      return {
+        trends: trends.length > 0 ? trends : getDefaultTrends(),
+        newsTopics: newsTopics.length > 0 ? newsTopics : getDefaultNewsTopics(),
+        marketConditions,
+        articles: industryNews.slice(0, 5), // 最新5件の記事
+      }
+    } catch (error) {
+      console.warn('NewsAPI連携に失敗しました。モックデータを使用します:', error)
+      // エラー時はモックデータを返す
+      return getMockTrendAnalysis(input)
+    }
+  }
+
+  // NewsAPIキーがない場合はモックデータを返す
+  return getMockTrendAnalysis(input)
+}
+
+/**
+ * モックトレンド分析データ
+ */
+function getMockTrendAnalysis(input: AIAnalysisInput) {
   return {
     trends: [
       'AI技術の進化',
@@ -71,6 +138,68 @@ async function analyzeTrends(input: AIAnalysisInput) {
       '環境配慮型サービスの拡大',
     ],
     marketConditions: '市場は成長傾向にあり、イノベーションが求められています',
+    articles: [],
+  }
+}
+
+/**
+ * デフォルトのトレンド
+ */
+function getDefaultTrends(): string[] {
+  return [
+    'AI技術の進化',
+    'DX推進',
+    'サステナビリティ',
+    'リモートワーク',
+    '健康意識の高まり',
+  ]
+}
+
+/**
+ * デフォルトのニューストピック
+ */
+function getDefaultNewsTopics(): string[] {
+  return [
+    'AI活用事例の増加',
+    'デジタル変革の加速',
+    '環境配慮型サービスの拡大',
+  ]
+}
+
+/**
+ * 市場状況を分析
+ */
+function analyzeMarketConditions(
+  articles: Array<{ title: string; description: string }>,
+  input: AIAnalysisInput
+): string {
+  if (articles.length === 0) {
+    return '市場は成長傾向にあり、イノベーションが求められています'
+  }
+
+  // 記事の内容から市場状況を推測
+  const positiveKeywords = ['成長', '拡大', '増加', '好調', '成功']
+  const negativeKeywords = ['減少', '縮小', '低迷', '課題', '問題']
+
+  let positiveCount = 0
+  let negativeCount = 0
+
+  articles.forEach((article) => {
+    const text = `${article.title} ${article.description}`
+    positiveKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) positiveCount++
+    })
+    negativeKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) negativeCount++
+    })
+  })
+
+  if (positiveCount > negativeCount) {
+    return `${input.industry || '市場'}は成長傾向にあり、${input.productServiceName}のようなイノベーションが求められています`
+  } else if (negativeCount > positiveCount) {
+    return `${input.industry || '市場'}では課題が存在しており、${input.productServiceName}のような解決策が期待されています`
+  } else {
+    return `${input.industry || '市場'}は安定した状況にあり、${input.productServiceName}のような新たなアプローチが注目されています`
   }
 }
 
@@ -79,7 +208,8 @@ async function analyzeTrends(input: AIAnalysisInput) {
  */
 async function generateProposals(
   input: AIAnalysisInput,
-  analysis: Awaited<ReturnType<typeof analyzeTrends>>
+  analysis: Awaited<ReturnType<typeof analyzeTrends>>,
+  selectedAI: AIType
 ): Promise<AIGeneratedProposal[]> {
   const angles: ProposalAngle[] = [
     'social-issue',
@@ -92,8 +222,27 @@ async function generateProposals(
   const proposals: AIGeneratedProposal[] = []
 
   for (const angle of angles) {
-    const proposal = await generateProposalForAngle(input, angle, analysis)
-    proposals.push(proposal)
+    try {
+      // 適合性チェック
+      const compatibility = checkCompatibility(input, analysis.trends, angle)
+      
+      console.log(`Angle ${angle}: compatibility score = ${compatibility.score}, isCompatible = ${compatibility.isCompatible}`)
+      
+      // 適合性が非常に低い場合（スコア10未満）のみスキップ
+      // ただし、AI APIが利用できない場合はテンプレートベースで生成するため、スキップしない
+      // また、trend-alignedアングルは常に生成する（トレンド分析結果に基づくため）
+      const hasAIApi = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY
+      if (compatibility.score < 10 && hasAIApi && angle !== 'trend-aligned') {
+        console.log(`Skipping angle ${angle} due to very low compatibility score: ${compatibility.score}`)
+        continue
+      }
+
+      const proposal = await generateProposalForAngle(input, angle, analysis, selectedAI, compatibility)
+      proposals.push(proposal)
+    } catch (error) {
+      console.error(`Error generating proposal for angle ${angle}:`, error)
+      // エラーが発生しても他のアングルの生成を続ける
+    }
   }
 
   return proposals
@@ -102,11 +251,14 @@ async function generateProposals(
 /**
  * 特定のアングルでプレスリリース案を生成
  * AI APIが利用可能な場合はAIを使用、そうでない場合はテンプレートベースで生成
+ * SCALE PR Competency Modelの力を憑依させる
  */
 async function generateProposalForAngle(
   input: AIAnalysisInput,
   angle: ProposalAngle,
-  analysis: Awaited<ReturnType<typeof analyzeTrends>>
+  analysis: Awaited<ReturnType<typeof analyzeTrends>>,
+  selectedAI: AIType,
+  compatibility: { score: number; isCompatible: boolean; reasons: string[] }
 ): Promise<AIGeneratedProposal> {
   const releaseDate = input.releaseDate
     ? typeof input.releaseDate === 'string'
@@ -114,32 +266,49 @@ async function generateProposalForAngle(
       : input.releaseDate
     : new Date()
 
+  // SCALE PRの力を取得
+  const scalePowers = ANGLE_TO_SCALE_POWERS[angle]
+  const scalePowerNames = scalePowers.map(power => SCALE_POWERS[power].name)
+
   // AI APIが利用可能な場合はAIを使用
   const hasAIApi = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY
 
   if (hasAIApi) {
     try {
-      const prompt = createProposalPrompt(input, angle, analysis)
-      const aiResponse = await generateWithAI(prompt)
+      const prompt = createProposalPrompt(
+        input,
+        angle,
+        analysis,
+        scalePowerNames,
+        compatibility
+      )
+      const aiResponse = await generateWithAI(prompt, selectedAI)
 
       // AIの応答をパース
       try {
         const aiContent = JSON.parse(aiResponse.content)
-        return createProposalFromAIResponse(input, angle, releaseDate, aiContent)
+        return createProposalFromAIResponse(
+          input,
+          angle,
+          releaseDate,
+          aiContent,
+          compatibility,
+          scalePowers
+        )
       } catch (parseError) {
         console.warn('AI response parsing failed, using template:', parseError)
         // パースに失敗した場合はテンプレートベースで生成
-        return generateProposalFromTemplate(input, angle, analysis, releaseDate)
+        return generateProposalFromTemplate(input, angle, analysis, releaseDate, compatibility, scalePowers)
       }
     } catch (aiError) {
       console.warn('AI generation failed, using template:', aiError)
       // AI生成に失敗した場合はテンプレートベースで生成
-      return generateProposalFromTemplate(input, angle, analysis, releaseDate)
+      return generateProposalFromTemplate(input, angle, analysis, releaseDate, compatibility, scalePowers)
     }
   }
 
   // AI APIが利用できない場合はテンプレートベースで生成
-  return generateProposalFromTemplate(input, angle, analysis, releaseDate)
+  return generateProposalFromTemplate(input, angle, analysis, releaseDate, compatibility, scalePowers)
 }
 
 /**
@@ -149,7 +318,9 @@ function generateProposalFromTemplate(
   input: AIAnalysisInput,
   angle: ProposalAngle,
   analysis: Awaited<ReturnType<typeof analyzeTrends>>,
-  releaseDate: Date
+  releaseDate: Date,
+  compatibility: { score: number; isCompatible: boolean; reasons: string[] },
+  scalePowers: string[]
 ): AIGeneratedProposal {
   const { title, introduction, background, development, recommendation, expectedMediaReaction } =
     generateContentForAngle(input, angle, analysis)
@@ -196,6 +367,9 @@ function generateProposalFromTemplate(
     recommendation,
     expectedMediaReaction,
     preview: pressRelease,
+    compatibilityScore: compatibility.score,
+    scalePowers: scalePowers as SCALEPower[],
+    isCompatible: compatibility.isCompatible,
   }
 }
 
@@ -206,7 +380,9 @@ function createProposalFromAIResponse(
   input: AIAnalysisInput,
   angle: ProposalAngle,
   releaseDate: Date,
-  aiContent: any
+  aiContent: any,
+  compatibility: { score: number; isCompatible: boolean; reasons: string[] },
+  scalePowers: string[]
 ): AIGeneratedProposal {
   const title = aiContent.title || input.productServiceName || 'プレスリリース'
   const introduction = aiContent.introduction || ''
@@ -257,6 +433,9 @@ function createProposalFromAIResponse(
     recommendation,
     expectedMediaReaction,
     preview: pressRelease,
+    compatibilityScore: compatibility.score,
+    scalePowers: scalePowers as SCALEPower[],
+    isCompatible: compatibility.isCompatible,
   }
 }
 

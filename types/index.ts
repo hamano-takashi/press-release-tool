@@ -97,6 +97,29 @@ export type ProposalAngle =
   | 'unique-story'      // ユニークストーリー型
   | 'industry-innovative'; // 業界革新型
 
+
+export interface AIAnalysisInput {
+  productServiceName: string;
+  description: string;
+  industry: string;
+  targetCustomers: string;
+  features: string[];
+  priceRange: string;
+  releaseDate: Date | string;
+  selectedAI?: AIType; // 選択されたAI
+}
+
+// AIの種類
+export type AIType = 'openai' | 'claude' | 'gemini' | 'auto';
+
+// SCALE PR Competency Modelの5つの力
+export type SCALEPower = 
+  | 'multi-stakeholder'      // マルチ憑依力
+  | 'spokesperson'          // 背負い力
+  | 'situational-forecast'  // 見立て力
+  | 'narrative'             // ナラティブ力
+  | 'executional-flexibility'; // 変動実行力
+
 export interface AIGeneratedProposal {
   id: string;
   angle: ProposalAngle;
@@ -107,16 +130,9 @@ export interface AIGeneratedProposal {
   recommendation: string; // 推奨理由
   expectedMediaReaction: string;
   preview: PressRelease; // 完全な原稿プレビュー
-}
-
-export interface AIAnalysisInput {
-  productServiceName: string;
-  description: string;
-  industry: string;
-  targetCustomers: string;
-  features: string[];
-  priceRange: string;
-  releaseDate: Date | string;
+  compatibilityScore?: number; // 適合性スコア（0-100）
+  scalePowers?: SCALEPower[]; // 使用されたSCALE PRの力
+  isCompatible?: boolean; // 商品とトレンドの適合性
 }
 
 // アプリケーションの状態管理

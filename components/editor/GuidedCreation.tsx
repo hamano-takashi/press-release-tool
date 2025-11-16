@@ -10,7 +10,7 @@ import ImageUploader from '@/components/editor/ImageUploader'
 import PreviewPanel from '@/components/editor/PreviewPanel'
 import EditorToolbar from '@/components/editor/EditorToolbar'
 import { fileToBase64, generateId } from '@/lib/utils'
-import { ImageData } from '@/types'
+import { ImageData, PressRelease } from '@/types'
 
 // 質問の定義
 interface Question {
@@ -184,6 +184,16 @@ export default function GuidedCreation() {
     setGuidedCreation({ currentStep, answers })
   }, [currentStep, answers, setGuidedCreation])
 
+  // 回答に基づいてリアルタイムプレビューを更新
+  useEffect(() => {
+    if (Object.keys(answers).length > 0) {
+      const preview = generatePreviewFromAnswers(answers)
+      if (preview) {
+        updatePressRelease(preview)
+      }
+    }
+  }, [answers, updatePressRelease])
+
   const handleAnswerChange = async (value: any) => {
     if (currentQuestion.type === 'image') {
       if (value instanceof File) {
@@ -259,6 +269,86 @@ export default function GuidedCreation() {
         features: [...currentFeatures, newFeature],
       })
       setFeatureInputs([''])
+    }
+  }
+
+  // 回答から簡単なプレビューを生成（リアルタイム更新用）
+  const generatePreviewFromAnswers = (answers: GuidedCreationAnswers): Partial<PressRelease> | null => {
+    if (!answers.productServiceName) {
+      return null
+    }
+
+    const releaseDate = answers.releaseDate
+      ? typeof answers.releaseDate === 'string'
+        ? new Date(answers.releaseDate)
+        : answers.releaseDate
+      : new Date()
+
+    const title = answers.productServiceName
+      ? `${answers.productServiceName}をリリース`
+      : 'プレスリリース'
+
+    let introduction = ''
+    if (answers.companyName) {
+      introduction += `${answers.companyName}は`
+    }
+    if (answers.productServiceName) {
+      introduction += `${answers.productServiceName}を`
+    }
+    introduction += 'リリースいたします。'
+
+    if (answers.features && answers.features.length > 0) {
+      introduction += `\n\n${answers.productServiceName}の主な特徴は以下の通りです：`
+      answers.features.forEach((feature, index) => {
+        introduction += `\n${index + 1}. ${feature}`
+      })
+    }
+
+    const sections: PressRelease['sections'] = []
+    if (answers.purpose || answers.background) {
+      sections.push({
+        id: generateId(),
+        type: 'background',
+        title: '背景',
+        content: [answers.purpose, answers.background].filter(Boolean).join('\n\n'),
+        order: 0,
+      })
+    }
+    if (answers.background || answers.socialRelevance) {
+      sections.push({
+        id: generateId(),
+        type: 'development',
+        title: '開発経緯',
+        content: [answers.background, answers.socialRelevance].filter(Boolean).join('\n\n'),
+        order: 1,
+      })
+    }
+
+    return {
+      companyName: answers.companyName,
+      releaseDate,
+      title,
+      introduction,
+      sections,
+      logoImage:
+        answers.logoImage && typeof answers.logoImage === 'object' && 'url' in answers.logoImage
+          ? answers.logoImage
+          : undefined,
+      mainImage:
+        answers.mainImage && typeof answers.mainImage === 'object' && 'url' in answers.mainImage
+          ? answers.mainImage
+          : undefined,
+      additionalImages:
+        answers.additionalImages && Array.isArray(answers.additionalImages)
+          ? (answers.additionalImages.filter(
+              (img) => img && typeof img === 'object' && 'url' in img
+            ) as PressRelease['additionalImages'])
+          : [],
+      contact: {
+        name: answers.contactName || '',
+        phone: answers.contactPhone || '',
+        email: answers.contactEmail || '',
+      },
     }
   }
 
