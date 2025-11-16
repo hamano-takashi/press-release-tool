@@ -4,15 +4,22 @@ import { useRef, useState } from 'react'
 import { ImageData } from '@/types'
 import { generateId } from '@/lib/utils'
 import { fileToBase64, getImageDimensions } from '@/lib/utils'
+import ImageEditor from './ImageEditor'
 
 interface ImageUploaderProps {
   image: ImageData | null | undefined
   onImageChange: (image: ImageData | null) => void
+  showEditButton?: boolean
 }
 
-export default function ImageUploader({ image, onImageChange }: ImageUploaderProps) {
+export default function ImageUploader({
+  image,
+  onImageChange,
+  showEditButton = true,
+}: ImageUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [showEditor, setShowEditor] = useState(false)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -59,6 +66,19 @@ export default function ImageUploader({ image, onImageChange }: ImageUploaderPro
     onImageChange(null)
   }
 
+  if (showEditor && image) {
+    return (
+      <ImageEditor
+        image={image}
+        onSave={(editedImage) => {
+          onImageChange(editedImage)
+          setShowEditor(false)
+        }}
+        onCancel={() => setShowEditor(false)}
+      />
+    )
+  }
+
   return (
     <div className="w-full">
       {image ? (
@@ -66,15 +86,43 @@ export default function ImageUploader({ image, onImageChange }: ImageUploaderPro
           <img
             src={image.url}
             alt={image.filename}
-            className="w-full h-48 object-contain border border-gray-300 rounded-lg bg-gray-50"
+            className={`w-full h-48 object-contain border border-gray-300 rounded-lg bg-gray-50 ${
+              image.position === 'left'
+                ? 'object-left'
+                : image.position === 'right'
+                ? 'object-right'
+                : 'object-center'
+            }`}
+            style={{
+              maxWidth: image.maxWidth ? `${image.maxWidth}px` : undefined,
+            }}
           />
-          <button
-            onClick={handleRemove}
-            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
-          >
-            ×
-          </button>
-          <p className="mt-2 text-sm text-gray-600">{image.filename}</p>
+          <div className="absolute top-2 right-2 flex gap-2">
+            {showEditButton && (
+              <button
+                onClick={() => setShowEditor(true)}
+                className="bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-blue-600"
+                title="画像を編集"
+              >
+                ✏️
+              </button>
+            )}
+            <button
+              onClick={handleRemove}
+              className="bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
+              title="画像を削除"
+            >
+              ×
+            </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-sm text-gray-600">{image.filename}</p>
+            {image.width && image.height && (
+              <p className="text-xs text-gray-500">
+                {image.width} × {image.height}px
+              </p>
+            )}
+          </div>
         </div>
       ) : (
         <div

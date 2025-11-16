@@ -83,9 +83,17 @@ export default function PreviewPanel() {
           </div>
         )}
 
-        {/* メイン画像 - 中央配置 */}
+        {/* メイン画像 - 配置設定を反映 */}
         {currentPressRelease.mainImage && (
-          <div className="mb-8 text-center">
+          <div
+            className={`mb-8 ${
+              currentPressRelease.mainImage.position === 'left'
+                ? 'text-left'
+                : currentPressRelease.mainImage.position === 'right'
+                ? 'text-right'
+                : 'text-center'
+            }`}
+          >
             {currentPressRelease.slogan && (
               <p className="text-lg font-semibold text-gray-800 mb-4">
                 {currentPressRelease.slogan}
@@ -94,7 +102,18 @@ export default function PreviewPanel() {
             <img
               src={currentPressRelease.mainImage.url}
               alt={currentPressRelease.mainImage.filename}
-              className="max-w-full h-auto mx-auto rounded-lg shadow-md"
+              className={`h-auto rounded-lg shadow-md ${
+                currentPressRelease.mainImage.position === 'left'
+                  ? 'ml-0'
+                  : currentPressRelease.mainImage.position === 'right'
+                  ? 'mr-0'
+                  : 'mx-auto'
+              }`}
+              style={{
+                maxWidth: currentPressRelease.mainImage.maxWidth
+                  ? `${currentPressRelease.mainImage.maxWidth}px`
+                  : '100%',
+              }}
             />
           </div>
         )}
@@ -111,15 +130,26 @@ export default function PreviewPanel() {
           </div>
         ))}
 
-        {/* その他画像 - 中央配置 */}
+        {/* その他画像 - 配置設定を反映 */}
         {currentPressRelease.additionalImages.length > 0 && (
-          <div className="mb-8 flex flex-wrap justify-center gap-4">
+          <div
+            className={`mb-8 flex flex-wrap gap-4 ${
+              currentPressRelease.additionalImages[0]?.position === 'left'
+                ? 'justify-start'
+                : currentPressRelease.additionalImages[0]?.position === 'right'
+                ? 'justify-end'
+                : 'justify-center'
+            }`}
+          >
             {currentPressRelease.additionalImages.map((img) => (
               <img
                 key={img.id}
                 src={img.url}
                 alt={img.filename}
                 className="max-w-md w-full h-auto rounded-lg shadow-md"
+                style={{
+                  maxWidth: img.maxWidth ? `${img.maxWidth}px` : undefined,
+                }}
               />
             ))}
           </div>

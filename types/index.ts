@@ -8,6 +8,10 @@ export interface ImageData {
   type: string; // MIME type
   width?: number;
   height?: number;
+  // 画像編集情報
+  position?: 'left' | 'center' | 'right'; // 配置位置
+  maxWidth?: number; // 最大幅（px）
+  aspectRatio?: number; // アスペクト比
 }
 
 export interface ContactInfo {
