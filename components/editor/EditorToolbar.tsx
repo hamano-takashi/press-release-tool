@@ -8,9 +8,10 @@ import TemplateSelector from '@/components/editor/TemplateSelector'
 
 export default function EditorToolbar() {
   const router = useRouter()
-  const { currentPressRelease, saveCurrentDraft: saveDraft, setMode, mode } = usePressReleaseStore()
+  const { currentPressRelease, saveCurrentDraft: saveDraft, setMode, mode, selectedAI, setSelectedAI } = usePressReleaseStore()
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
   const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+  const [showAISelector, setShowAISelector] = useState(false)
 
   const handleSave = () => {
     if (currentPressRelease) {
@@ -109,6 +110,66 @@ export default function EditorToolbar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <div className="relative">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowAISelector(!showAISelector)}
+          >
+            <span className="mr-2">🤖</span>
+            AI: {selectedAI === 'auto' ? '自動' : selectedAI === 'openai' ? 'GPT-4' : selectedAI === 'claude' ? 'Claude' : 'Gemini'}
+          </Button>
+          {showAISelector && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+              <div className="p-2">
+                <button
+                  onClick={() => {
+                    setSelectedAI('auto')
+                    setShowAISelector(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-gray-100 ${
+                    selectedAI === 'auto' ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                  }`}
+                >
+                  自動選択
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedAI('openai')
+                    setShowAISelector(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-gray-100 ${
+                    selectedAI === 'openai' ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                  }`}
+                >
+                  OpenAI GPT-4
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedAI('claude')
+                    setShowAISelector(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-gray-100 ${
+                    selectedAI === 'claude' ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                  }`}
+                >
+                  Anthropic Claude
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedAI('gemini')
+                    setShowAISelector(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-gray-100 ${
+                    selectedAI === 'gemini' ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                  }`}
+                >
+                  Google Gemini
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <Button variant="outline" size="sm" onClick={() => setShowTemplateSelector(true)}>
           テンプレート
         </Button>
@@ -145,6 +206,14 @@ export default function EditorToolbar() {
             />
           </div>
         </div>
+      )}
+
+      {/* AI選択ドロップダウンを閉じるためのオーバーレイ */}
+      {showAISelector && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setShowAISelector(false)}
+        />
       )}
     </div>
   )
