@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePressReleaseStore } from '@/store/usePressReleaseStore'
 import Button from '@/components/Button'
+import TemplateSelector from '@/components/editor/TemplateSelector'
 
 export default function EditorToolbar() {
   const router = useRouter()
   const { currentPressRelease, saveCurrentDraft: saveDraft, setMode, mode } = usePressReleaseStore()
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false)
 
   const handleSave = () => {
     if (currentPressRelease) {
@@ -107,6 +109,9 @@ export default function EditorToolbar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" onClick={() => setShowTemplateSelector(true)}>
+          テンプレート
+        </Button>
         <Button variant="outline" size="sm" onClick={handleSave}>
           保存
         </Button>
@@ -129,6 +134,18 @@ export default function EditorToolbar() {
           Word出力
         </Button>
       </div>
+
+      {/* テンプレート選択モーダル */}
+      {showTemplateSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <TemplateSelector
+              onSelect={() => setShowTemplateSelector(false)}
+              onClose={() => setShowTemplateSelector(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

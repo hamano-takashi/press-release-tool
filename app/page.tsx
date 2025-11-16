@@ -5,11 +5,13 @@ import { usePressReleaseStore } from '@/store/usePressReleaseStore'
 import { getDrafts } from '@/lib/storage'
 import { useEffect, useState } from 'react'
 import { PressRelease } from '@/types'
+import TemplateSelector from '@/components/editor/TemplateSelector'
 
 export default function HomePage() {
   const router = useRouter()
   const { createNewPressRelease, loadDraft } = usePressReleaseStore()
   const [drafts, setDrafts] = useState<PressRelease[]>([])
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false)
 
   useEffect(() => {
     setDrafts(getDrafts())
@@ -40,7 +42,7 @@ export default function HomePage() {
           </div>
 
           {/* アクションボタン */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             <button
               onClick={handleNewPressRelease}
               className="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-6 px-8 rounded-lg shadow-lg transform transition hover:scale-105"
@@ -48,6 +50,15 @@ export default function HomePage() {
               <div className="text-3xl mb-2">✨</div>
               <div className="text-lg">新規作成</div>
               <div className="text-sm opacity-90 mt-1">新しいプレスリリースを作成</div>
+            </button>
+
+            <button
+              onClick={() => setShowTemplateSelector(true)}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-6 px-8 rounded-lg shadow-lg transform transition hover:scale-105"
+            >
+              <div className="text-3xl mb-2">📄</div>
+              <div className="text-lg">テンプレートから作成</div>
+              <div className="text-sm opacity-90 mt-1">テンプレートを選択</div>
             </button>
 
             <button
@@ -71,7 +82,7 @@ export default function HomePage() {
 
           {/* 下書き一覧 */}
           {drafts.length > 0 && (
-            <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-12">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">続きから作成</h2>
               <div className="space-y-3">
                 {drafts.map((draft) => (
@@ -88,6 +99,21 @@ export default function HomePage() {
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* テンプレート選択モーダル */}
+          {showTemplateSelector && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <TemplateSelector
+                  onSelect={() => {
+                    setShowTemplateSelector(false)
+                    router.push('/editor')
+                  }}
+                  onClose={() => setShowTemplateSelector(false)}
+                />
               </div>
             </div>
           )}

@@ -152,3 +152,16 @@ export interface AppState {
   ui: UIState;
 }
 
+// テンプレートの型定義
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: 'standard' | 'product' | 'service' | 'event' | 'custom';
+  preview?: string; // プレビュー画像のURL（オプション）
+  pressRelease: Omit<PressRelease, 'id' | 'createdAt' | 'updatedAt'>; // テンプレートの内容
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  isDefault?: boolean; // デフォルトテンプレートかどうか
+}
+
