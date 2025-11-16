@@ -43,7 +43,44 @@ export function toAppError(error: unknown): AppError {
     }
 
     // AI生成エラーの検出
-    if (error.message.includes('AI') || error.message.includes('OpenAI') || error.message.includes('Claude')) {
+    if (error.message.includes('AI') || error.message.includes('OpenAI') || error.message.includes('Claude') || error.message.includes('Gemini')) {
+      // Gemini APIのエラーの場合、より詳細な情報を提供
+      if (error.message.includes('Gemini')) {
+        // APIキー関連のエラー
+        if (error.message.includes('API_KEY') || error.message.includes('401') || error.message.includes('403')) {
+          return {
+            type: ErrorType.AI_GENERATION_ERROR,
+            message: 'Gemini APIキーが無効です。APIキーが正しく設定されているか確認してください。',
+            originalError: error,
+            details: { api: 'gemini' },
+          }
+        }
+        // モデル関連のエラー
+        if (error.message.includes('404') || error.message.includes('model')) {
+          return {
+            type: ErrorType.AI_GENERATION_ERROR,
+            message: 'Gemini APIのモデルが見つかりません。モデル名を確認してください。',
+            originalError: error,
+            details: { api: 'gemini' },
+          }
+        }
+        // レート制限
+        if (error.message.includes('429') || error.message.includes('quota') || error.message.includes('rate limit')) {
+          return {
+            type: ErrorType.AI_GENERATION_ERROR,
+            message: 'Gemini APIのレート制限に達しました。しばらく時間をおいてから再度お試しください。',
+            originalError: error,
+            details: { api: 'gemini' },
+          }
+        }
+        // その他のGeminiエラー
+        return {
+          type: ErrorType.AI_GENERATION_ERROR,
+          message: `Gemini APIエラー: ${error.message}`,
+          originalError: error,
+          details: { api: 'gemini' },
+        }
+      }
       return {
         type: ErrorType.AI_GENERATION_ERROR,
         message: 'AI生成に失敗しました。APIキーが正しく設定されているか確認してください。',

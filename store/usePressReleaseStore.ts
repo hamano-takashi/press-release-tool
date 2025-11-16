@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { PressRelease, EditorMode, GuidedCreationState, AIGenerationState, UIState } from '@/types'
+import { PressRelease, EditorMode, GuidedCreationState, AIGenerationState, UIState, AIType } from '@/types'
 import { generateId } from '@/lib/utils'
 import { saveDraft, getDraftById } from '@/lib/storage'
 
@@ -10,6 +10,7 @@ interface PressReleaseStore {
   guidedCreation: GuidedCreationState
   aiGeneration: AIGenerationState
   ui: UIState
+  selectedAI: AIType // 選択されたAIタイプ
 
   // アクション
   setCurrentPressRelease: (pressRelease: PressRelease | null) => void
@@ -18,6 +19,7 @@ interface PressReleaseStore {
   setGuidedCreation: (state: Partial<GuidedCreationState>) => void
   setAIGeneration: (state: Partial<AIGenerationState>) => void
   setUI: (state: Partial<UIState>) => void
+  setSelectedAI: (ai: AIType) => void
   
   // 下書き操作
   saveCurrentDraft: () => void
@@ -59,6 +61,7 @@ export const usePressReleaseStore = create<PressReleaseStore>((set, get) => ({
     sidebarOpen: true,
     previewMode: 'desktop',
   },
+  selectedAI: 'auto',
 
   // アクション
   setCurrentPressRelease: (pressRelease) => {
@@ -97,6 +100,10 @@ export const usePressReleaseStore = create<PressReleaseStore>((set, get) => ({
     set((prev) => ({
       ui: { ...prev.ui, ...state },
     }))
+  },
+
+  setSelectedAI: (ai) => {
+    set({ selectedAI: ai })
   },
 
   saveCurrentDraft: () => {

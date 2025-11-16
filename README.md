@@ -34,7 +34,22 @@ npm run dev
 
 ## 環境変数
 
-`.env.local` ファイルを作成し、以下の環境変数を設定してください：
+### クイックセットアップ（推奨）
+
+セットアップスクリプトを使用して、対話形式でAPIキーを設定できます：
+
+```bash
+./setup-env.sh
+```
+
+スクリプトが `.env.local` ファイルを作成します。
+
+### 手動設定
+
+`.env.local` ファイルを手動で作成する場合：
+
+1. プロジェクトのルートディレクトリに `.env.local` ファイルを作成
+2. 以下の内容をコピーして、実際のAPIキーに置き換える：
 
 ```env
 # AI API（オプション - フェーズ3で使用）
@@ -46,6 +61,12 @@ GEMINI_API_KEY=your_gemini_api_key
 # 外部API（オプション - フェーズ3で使用）
 NEWS_API_KEY=your_news_api_key
 ```
+
+### APIキーの取得方法
+
+詳細なAPIキーの取得方法と設定手順は、[API_KEY_SETUP.md](./API_KEY_SETUP.md) を参照してください。
+
+**重要**: `.env.local` ファイルはGitにコミットされません（`.gitignore`に含まれています）。
 
 ## 開発フェーズ
 

@@ -35,8 +35,8 @@ async function generateWithOpenAI(prompt: AIPrompt): Promise<AIResponse> {
           { role: 'system', content: prompt.system },
           { role: 'user', content: prompt.user },
         ],
-        temperature: 0.7,
-        max_tokens: 2000,
+        temperature: 0.8,
+        max_tokens: 4000,
       }),
     })
 
@@ -80,7 +80,7 @@ async function generateWithClaude(prompt: AIPrompt): Promise<AIResponse> {
       },
       body: JSON.stringify({
         model: 'claude-3-opus-20240229',
-        max_tokens: 2000,
+        max_tokens: 4000,
         system: prompt.system,
         messages: [
           {
@@ -116,75 +116,180 @@ async function generateWithClaude(prompt: AIPrompt): Promise<AIResponse> {
  * Google Gemini APIを使用してテキストを生成
  */
 async function generateWithGemini(prompt: AIPrompt): Promise<AIResponse> {
-  const apiKey = process.env.GEMINI_API_KEY
+  // 環境変数を明示的にtrimして、余分なスペースを削除
+  const apiKey = process.env.GEMINI_API_KEY?.trim()
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEYが設定されていません')
-  }
-
-  try {
-    // Gemini APIのエンドポイント（最新のAPIバージョンを使用）
-    // gemini-1.5-pro または gemini-pro を使用可能
-    const model = 'gemini-1.5-pro'
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-
-    // Gemini APIはsystemメッセージを直接サポートしていないため、
-    // userメッセージにsystemプロンプトを含める
-    const fullPrompt = `${prompt.system}\n\n${prompt.user}`
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: fullPrompt,
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2000,
-          topP: 0.95,
-          topK: 40,
-        },
-      }),
+    console.error('GEMINI_API_KEYが設定されていません')
+    console.error('環境変数の確認:', {
+      rawValue: process.env.GEMINI_API_KEY,
+      trimmedValue: process.env.GEMINI_API_KEY?.trim(),
+      isUndefined: process.env.GEMINI_API_KEY === undefined,
+      isEmpty: !process.env.GEMINI_API_KEY?.trim(),
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(
-        `Gemini API error: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`
-      )
-    }
-
-    const data = await response.json()
-    
-    // エラーチェック
-    if (data.error) {
-      throw new Error(`Gemini API error: ${JSON.stringify(data.error)}`)
-    }
-
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text
-
-    if (!content) {
-      // セーフティフィルターでブロックされた場合など
-      const finishReason = data.candidates?.[0]?.finishReason
-      if (finishReason && finishReason !== 'STOP') {
-        throw new Error(`Gemini API: コンテンツが生成されませんでした。理由: ${finishReason}`)
-      }
-      throw new Error('Gemini APIからコンテンツが返されませんでした')
-    }
-
-    return { content }
-  } catch (error) {
-    console.error('Gemini API error:', error)
-    throw error
+    throw new Error('GEMINI_API_KEYが設定されていません。.env.localファイルを確認し、開発サーバーを再起動してください。')
   }
+
+  // 試行するモデルのリスト（優先順位順）
+  // v1beta APIで利用可能なモデルのみを使用
+  // APIキーで利用可能なモデルを確認して使用
+  const models = [
+    'gemini-2.5-flash-preview-05-20',  // 最新のFlashモデル
+    'gemini-2.5-pro-preview-03-25',   // 最新のProモデル
+    'gemini-1.5-flash',                // フォールバック
+    'gemini-1.5-pro'                   // フォールバック
+  ]
+  
+  // Gemini APIはsystemメッセージを直接サポートしていないため、
+  // userメッセージにsystemプロンプトを含める
+  const fullPrompt = `${prompt.system}\n\n${prompt.user}`
+
+  let lastError: Error | null = null
+
+  // 各モデルを順番に試行
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: fullPrompt,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 4000,
+            topP: 0.95,
+            topK: 40,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        // Content-Typeを確認して、HTMLレスポンス（エラーページ）かどうかを判定
+        const contentType = response.headers.get('content-type') || ''
+        let errorData: any = {}
+        let responseText = ''
+        
+        // レスポンスボディを一度だけ読み取る
+        try {
+          responseText = await response.text()
+        } catch (textError) {
+          throw new Error(`Gemini API error (${model}): レスポンスの読み取りに失敗しました`)
+        }
+        
+        if (contentType.includes('application/json')) {
+          try {
+            errorData = JSON.parse(responseText)
+          } catch {
+            errorData = { rawResponse: responseText.substring(0, 200) }
+          }
+        } else {
+          // HTMLレスポンスの場合（Googleのエラーページなど）
+          console.error(`Gemini API HTMLエラーレスポンス (${model}):`, responseText.substring(0, 500))
+          
+          // よくあるエラーパターンを検出
+          if (responseText.includes('API key not valid') || responseText.includes('Invalid API key')) {
+            throw new Error('Gemini APIキーが無効です。APIキーを確認してください。')
+          }
+          if (responseText.includes('quota') || responseText.includes('Quota')) {
+            throw new Error('Gemini APIのクォータに達しました。しばらく時間をおいてから再度お試しください。')
+          }
+          
+          throw new Error(`Gemini API error (${model}): ${response.status} ${response.statusText} - HTMLエラーページが返されました`)
+        }
+        
+        const errorMessage = `Gemini API error (${model}): ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`
+        
+        // 404エラー（モデルが見つからない）の場合は次のモデルを試す
+        if (response.status === 404) {
+          console.warn(`モデル ${model} が見つかりません。次のモデルを試します。`)
+          lastError = new Error(errorMessage)
+          continue
+        }
+        
+        // 400エラー（APIキーが無効など）の場合は詳細なエラーメッセージを返す
+        if (response.status === 400 && errorData.error) {
+          const errorDetail = errorData.error.message || JSON.stringify(errorData.error)
+          throw new Error(`Gemini API error (${model}): ${errorDetail}`)
+        }
+        
+        throw new Error(errorMessage)
+      }
+
+      // レスポンスがJSONかどうかを確認
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        const htmlText = await response.text()
+        console.error(`Gemini API HTMLレスポンス (${model}):`, htmlText.substring(0, 500))
+        throw new Error(`Gemini API (${model}): JSON形式でないレスポンスが返されました`)
+      }
+
+      // レスポンスボディを読み取る
+      const responseText = await response.text()
+      let data: any
+      try {
+        data = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error(`Gemini API JSONパースエラー (${model}):`, parseError)
+        throw new Error(`Gemini API (${model}): JSON形式でないレスポンスが返されました`)
+      }
+      
+      // エラーチェック
+      if (data.error) {
+        throw new Error(`Gemini API error (${model}): ${JSON.stringify(data.error)}`)
+      }
+
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+
+      if (!content) {
+        // セーフティフィルターでブロックされた場合など
+        const finishReason = data.candidates?.[0]?.finishReason
+        if (finishReason && finishReason !== 'STOP') {
+          throw new Error(`Gemini API (${model}): コンテンツが生成されませんでした。理由: ${finishReason}`)
+        }
+        throw new Error(`Gemini API (${model}): コンテンツが返されませんでした`)
+      }
+
+      console.log(`Gemini API成功: モデル ${model} を使用`)
+      return { content }
+    } catch (error) {
+      console.error(`Gemini API error (${model}):`, error)
+      lastError = error instanceof Error ? error : new Error(String(error))
+      
+      // 404エラー（モデルが見つからない）の場合は次のモデルを試す
+      if (error instanceof Error && error.message.includes('404')) {
+        continue
+      }
+      
+      // その他のエラーで、まだ試していないモデルがある場合は続行
+      if (models.indexOf(model) < models.length - 1) {
+        continue
+      }
+      
+      // 最後のモデルでも失敗した場合はエラーを投げる
+      throw error
+    }
+  }
+
+  // すべてのモデルで失敗した場合
+  if (lastError) {
+    // 404エラーの場合、利用可能なモデルがないことを示す
+    if (lastError.message.includes('404') || lastError.message.includes('NOT_FOUND')) {
+      throw new Error('Gemini API: 利用可能なモデルが見つかりませんでした。APIキーが正しく設定されているか、APIキーに適切な権限があるか確認してください。')
+    }
+    throw lastError
+  }
+  throw new Error('Gemini API: すべてのモデルでエラーが発生しました')
 }
 
 /**
