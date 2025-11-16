@@ -14,7 +14,7 @@ interface TemplateSelectorProps {
 }
 
 export default function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
-  const { updatePressRelease } = usePressReleaseStore()
+  const { updatePressRelease, currentPressRelease } = usePressReleaseStore()
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedCategory, setSelectedCategory] = useState<Template['category'] | 'all'>('all')
   const [isCreating, setIsCreating] = useState(false)
@@ -42,10 +42,8 @@ export default function TemplateSelector({ onSelect, onClose }: TemplateSelector
     onClose?.()
   }
 
-  const { currentPressRelease: currentPR } = usePressReleaseStore()
-
   const handleSaveAsTemplate = () => {
-    if (!currentPR) {
+    if (!currentPressRelease) {
       alert('プレスリリースが作成されていません')
       return
     }
@@ -61,17 +59,17 @@ export default function TemplateSelector({ onSelect, onClose }: TemplateSelector
       description: newTemplateDescription,
       category: 'custom',
       pressRelease: {
-        releaseDate: currentPR.releaseDate,
-        companyName: currentPR.companyName,
-        title: currentPR.title,
-        subtitle: currentPR.subtitle,
-        slogan: currentPR.slogan,
-        introduction: currentPR.introduction,
-        sections: currentPR.sections,
-        logoImage: currentPR.logoImage,
-        mainImage: currentPR.mainImage,
-        additionalImages: currentPR.additionalImages,
-        contact: currentPR.contact,
+        releaseDate: currentPressRelease.releaseDate,
+        companyName: currentPressRelease.companyName,
+        title: currentPressRelease.title,
+        subtitle: currentPressRelease.subtitle,
+        slogan: currentPressRelease.slogan,
+        introduction: currentPressRelease.introduction,
+        sections: currentPressRelease.sections,
+        logoImage: currentPressRelease.logoImage,
+        mainImage: currentPressRelease.mainImage,
+        additionalImages: currentPressRelease.additionalImages,
+        contact: currentPressRelease.contact,
       },
       createdAt: new Date(),
       updatedAt: new Date(),
